@@ -3,23 +3,17 @@ import 'package:rick_and_morty_app/src/models/character.dart';
 
 import '../services/rick_and_morty_service.dart';
 
-// class RickAndMortyRepo extends ChangeNotifier {
-//   List<Character> characters = [];
-//
-//   Future<List<Character>> fetchAllCharacters(Map<String, String>? queryParams) async{
-//     characters = await RickAndMortyService.fetchCharacters(queryParams);
-//     notifyListeners();
-//     return characters;
-//   }
-// }
-
 class RickAndMortyProvider with ChangeNotifier {
   late List<Character> _characters = [];
+
+  // Bool param for present snack bar when _hasMore = false
   bool _hasMore = true;
+
+  // Bool param for present progress bar
   bool _loading = false;
   int _page = 1;
   String? _errorMessage;
-  Map<String, String> _params = {"page": "1", "name": "", "status": ""};
+  Map<String, String> _queryParams = {"page": "1", "name": "", "status": ""};
 
   List<Character> get characters => _characters;
 
@@ -29,8 +23,12 @@ class RickAndMortyProvider with ChangeNotifier {
 
   String? get errorMessage => _errorMessage;
 
-  Map<String, String> get params => _params;
+  Map<String, String> get queryParams => _queryParams;
 
+  /// This function asynchronously fetches characters from the `RickAndMortyService`,
+  /// updates the local state with the retrieved data, and handles errors by setting an error message.
+  /// It ensures state updates notify listeners, manages pagination,
+  /// and filters characters based on a name parameter.
   Future<void> fetchCharacters() async {
     if (_loading || !_hasMore) return;
 
@@ -38,22 +36,28 @@ class RickAndMortyProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      List<Character> newCharacters =
-          await RickAndMortyService.fetchCharacters(_params);
+      var response = await RickAndMortyService.fetchCharacters(_queryParams);
+      if (response["status"] == "failure") {
+        throw Exception(response["details"]);
+      }
+      // When the response status is success...
+      List<Character> newCharacters = response["result"];
       _characters.addAll(newCharacters);
-      if (newCharacters.isEmpty) {
+      if (response["hasMoreData"] == false) {
         _hasMore = false;
       }
-    //   here - add logic to handle errors
     } catch (error) {
       _errorMessage = error.toString();
-    } finally {
-      _loading = false;
-      _page++;
-      _params["page"] = _page.toString();
-      notifyListeners();
     }
-    filterCharacters(_params["name"]!);
+    _loading = false;
+    incrementPagination();
+    notifyListeners();
+  }
+
+  incrementPagination() {
+    // Update pagination number for the next API call
+    _page++;
+    _queryParams["page"] = _page.toString();
   }
 
   void reset() {
@@ -62,26 +66,13 @@ class RickAndMortyProvider with ChangeNotifier {
     _page = 1;
     _loading = false;
     _errorMessage = null;
-    _params = {"page": "1"};
+    _queryParams = {"page": "1", "name": "", "status": ""};
     notifyListeners();
   }
 
-  updateFilter({String name = "", String status = ""}) async {
+  updateFilterAndRefreshListView({String name = "", String status = ""}) async {
     reset();
-    _params = {"page": "1", "name": name, "status": status};
+    _queryParams = {"page": "1", "name": name, "status": status};
     await fetchCharacters();
-  }
-
-  // Ensures that the search filters characters whose names fully contain the entered query
-  // string by using the contains method,
-  // matching the exact sequence of characters in a case-insensitive manner.
-  void filterCharacters(String query) {
-    final lowerCaseQuery = query.toLowerCase();
-
-    _characters = characters.where((character) {
-      return character.name.toLowerCase().contains(lowerCaseQuery);
-    }).toList();
-
-    notifyListeners();
   }
 }
